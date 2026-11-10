@@ -26,10 +26,15 @@ type-check:
 check:
     {{PREK}} run --all-files
 
+# Run the test suite with pytest
+test:
+    {{PYTHON}} -m pytest tests/ -v
+
 # Run all quality checks (lint + type-check + pre-commit)
 all:
     just lint
     just type-check
+    just test
     just check
 
 # Run the Streamlit application locally

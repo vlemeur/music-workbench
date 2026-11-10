@@ -3,43 +3,38 @@ name = "music-workbench"
 version = "0.1.0"
 description = "Music production toolkit: stem separation, chord detection, and MIDI harmony workspace"
 authors = [{ name = "Vincent LE MEUR", email = "vincent.le-meur@metroscope.tech" }]
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.14,<3.15"
 
 dependencies = [
-    # The audio/MIDI stack is currently constrained to Python 3.13 by transitive wheels.
-    # Intel macOS (x86_64): use last version with wheels for this platform
-    "torch>=2.10.0; sys_platform == 'darwin' and platform_machine == 'x86_64'",
-    "torchaudio>=2.10.0; sys_platform == 'darwin' and platform_machine == 'x86_64'",
-    # Other platforms (Linux, Windows, macOS arm64)
-    "torch>=2.10.0; sys_platform != 'darwin' or platform_machine != 'x86_64'",
-    "torchaudio>=2.10.0; sys_platform != 'darwin' or platform_machine != 'x86_64'",
-    "demucs-infer>=4.2.2",
+    # --- Audio / separation stack (cp314 wheels exist for all of these) ---
+    # numpy 2.2+ is required: numpy 1.x ships no cp314 wheels.
+    "numpy>=2.2,<3",
     "scipy>=1.11.0",
-    "numpy>=1.24.0,<2",
+    "librosa>=0.10.1,<0.11",
     "soundfile>=0.12.1",
     "sounddevice>=0.5.1",
-    "librosa>=0.10.1,<0.11",
+    "torch>=2.10.0",
+    "torchaudio>=2.10.0",
+    "demucs-infer>=4.2.2",
+    # Chord detection; scikit-learn is not imported directly here, but
+    # madmom's ml module needs it without declaring it.
     "madmom @ git+https://github.com/CPJKU/madmom.git",
-    "streamlit>=1.36.0",
-    "watchdog>=4.0.0",
-    "plotly>=5.18.0",
+    "scikit-learn>=1.6,<2",
+    # --- MIDI / harmony ---
     "mido>=1.3.0",
     "python-rtmidi>=1.5.0",
+    # --- UI / visualization ---
+    "streamlit>=1.36.0",
+    "plotly>=5.18.0",
     "music21>=10.5.0",
     "verovio>=6.2.1",
-    "chardet>=5,<6",
-    "PyYAML>=6,<7",
-    "tqdm>=4.67,<5",
-    "mir_eval>=0.8.2,<0.9",
-    "matplotlib>=3.10,<4",
-    "seaborn>=0.13,<0.14",
-    "scikit-learn>=1.6,<2",
 ]
 
 
 [dependency-groups]
 dev = [
     "prek>=0.4.0,<0.5.0",
+    "pytest>=9.2.0",
     "ruff>=0.4.10",
     "ty>=0.0.1",
 ]
@@ -56,7 +51,7 @@ package-dir = { "" = "src" }
 # ---------------------
 [tool.ruff]
 line-length = 100
-target-version = "py313"
+target-version = "py314"
 src = ["src", "scripts"]
 exclude = ["outputs", ".venv"]
 fix = true
