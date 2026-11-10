@@ -44,3 +44,7 @@ Thumbs.db
 *.mp3
 
 .streamlit_workdir
+
+# Agents file
+.vibe/
+AGENTS.md
