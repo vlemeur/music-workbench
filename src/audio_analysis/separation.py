@@ -23,6 +23,12 @@ MAX_SEGMENT_HYBRID_TRANSFORMER: float = 7.8
 # Default segment for Hybrid Transformer models
 DEFAULT_SEGMENT: int = 7
 
+# Directory (inside output_dir) where non-WAV sources are converted before separation
+CONVERTED_DIR_NAME: str = "converted"
+
+# Block size (in frames) used when converting non-WAV sources to WAV
+CONVERSION_BLOCKSIZE: int = 1 << 18
+
 
 def find_audio_files(directory: Path, extensions: list[str]) -> list[Path]:
     """
@@ -101,6 +107,61 @@ def _save_stem_waveform(stem_path: Path, waveform, sample_rate: int) -> None:
     sf.write(stem_path, audio, sample_rate)
 
 
+def ensure_wav(file_path: Path, output_dir: Path) -> Path:
+    """
+    Return a WAV path for the given audio file, converting it if needed.
+
+    WAV files are returned unchanged. Any other format (e.g. .mp3) is decoded
+    with soundfile and written as float32 WAV into `output_dir/converted/`.
+    An existing conversion for the same stem is reused instead of re-encoded.
+
+    Parameters
+    ----------
+    file_path : Path
+        The input audio file path.
+    output_dir : Path
+        The separation output directory; converted files land in a
+        `converted` subdirectory to keep source folders untouched.
+
+    Returns
+    -------
+    Path
+        Path to a WAV file, ready for demucs-infer.
+
+    Raises
+    ------
+    OSError, ValueError, RuntimeError
+        If the file cannot be read, decoded, or written (soundfile raises
+        LibsndfileError, a RuntimeError subclass, on decode failures).
+    """
+    if file_path.suffix.lower() == ".wav":
+        return file_path
+
+    converted_dir = output_dir / CONVERTED_DIR_NAME
+    converted_dir.mkdir(parents=True, exist_ok=True)
+    wav_path = converted_dir / f"{file_path.stem}.wav"
+
+    if wav_path.exists():
+        logger.info("🔁 Reusing existing WAV conversion: %s", wav_path)
+        return wav_path
+
+    logger.info("🔄 Converting '%s' to WAV…", file_path.name)
+    with (
+        sf.SoundFile(file_path) as source,
+        sf.SoundFile(
+            wav_path,
+            "w",
+            samplerate=source.samplerate,
+            channels=max(1, source.channels),
+        ) as target,
+    ):
+        for block in source.blocks(blocksize=CONVERSION_BLOCKSIZE, dtype="float32", always_2d=True):
+            target.write(block)
+
+    logger.info("✅ Converted '%s' → %s", file_path.name, wav_path)
+    return wav_path
+
+
 def run_demucs(
     file_path: Path,
     output_dir: Path,
@@ -159,6 +220,9 @@ def run_demucs(
 
     Notes
     -----
+    Non-WAV inputs (e.g. .mp3) are automatically converted to float32 WAV in
+    `output_dir/converted/` before separation; existing conversions are reused.
+
     The `htdemucs_ft` model is fine-tuned and produces better quality but takes
     4x longer to process. The `htdemucs_6s` model separates into 6 stems instead
     of 4, adding guitar and piano tracks.
@@ -190,6 +254,14 @@ def run_demucs(
     if all(path.exists() for path in existing):
         logger.info("⏭️  Skipping '%s': stems already exist for model %s.", file_path.name, model)
         return stem_dir
+
+    # Guard: demucs-infer stability requires a decodable WAV input; non-WAV
+    # sources (e.g. .mp3) are converted once into output_dir/converted/.
+    try:
+        wav_path = ensure_wav(file_path, output_dir)
+    except (OSError, ValueError, RuntimeError) as exc:
+        logger.error("❌ Failed to convert '%s' to WAV: %s", file_path.name, exc)
+        return None
 
     logger.info("🔍 Separating '%s' with model %s", file_path.name, model)
 
@@ -224,7 +296,7 @@ def run_demucs(
             jobs=0,
             progress=False,
         )
-        _, separated = separator.separate_audio_file(file_path)
+        _, separated = separator.separate_audio_file(wav_path)
         sample_rate = int(separator.samplerate)
 
         stem_dir.mkdir(parents=True, exist_ok=True)
